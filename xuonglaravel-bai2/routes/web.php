@@ -71,3 +71,40 @@ Route::get('/chiphi', function () {
         ->get();
         // dd($expenses);
 });
+Route::get('/baocao', function () {
+    $sales = DB::table('sales')
+    ->select(
+        DB::raw('SUM(total) as total_sales'),
+        DB::raw('EXTRACT(MONTH FROM sale_date) as month'),
+        DB::raw('EXTRACT(YEAR FROM sale_date) as year')
+    )
+    ->groupBy(DB::raw('EXTRACT(MONTH FROM sale_date)'), DB::raw('EXTRACT(YEAR FROM sale_date)'))
+    ->get();
+    $expenses = DB::table('expenses')
+    ->select(
+        DB::raw('SUM(amount) as total_expenses'),
+        DB::raw('EXTRACT(MONTH FROM expense_date) as month'),
+        DB::raw('EXTRACT(YEAR FROM expense_date) as year')
+    )
+    ->groupBy(DB::raw('EXTRACT(MONTH FROM expense_date)'), DB::raw('EXTRACT(YEAR FROM expense_date)'))
+    ->get();
+    foreach ($sales as $sale) {
+        $expense = $expenses->where('month', $sale->month)->where('year', $sale->year)->first();
+        $profit_before_tax = $sale->total_sales - ($expense->total_expenses ?? 0);
+        $tax_rate = DB::table('taxes')->where('tax_name', 'VAT')->first()->rate;
+        $tax_amount = $profit_before_tax * ($tax_rate / 100);
+        $profit_after_tax = $profit_before_tax - $tax_amount;
+
+        DB::table('financial_reports')->insert([
+            'month' => $sale->month,
+            'year' => $sale->year,
+            'total_sales' => $sale->total_sales,
+            'total_expenses' => $expense->total_expenses ?? 0,
+            'profit_before_tax' => $profit_before_tax,
+            'tax_amount' => $tax_amount,
+            'profit_after_tax' => $profit_after_tax,
+            'created_at' => now(),
+            'updated_at' => now()
+        ]);
+    }
+});
